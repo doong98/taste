@@ -14,6 +14,9 @@ import {
   RefreshCw,
   Compass,
   CheckCircle2,
+  Copy,
+  ExternalLink,
+  Check,
 } from 'lucide-react';
 
 interface MapViewProps {
@@ -49,6 +52,22 @@ export default function MapView({
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [useFallbackRadar, setUseFallbackRadar] = useState(false);
   const [activeRestaurant, setActiveRestaurant] = useState<Restaurant | null>(selectedRestaurant);
+  const [currentOrigin, setCurrentOrigin] = useState<string>('');
+  const [isCopied, setIsCopied] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setCurrentOrigin(window.location.origin);
+    }
+  }, []);
+
+  const handleCopyOrigin = () => {
+    if (currentOrigin && typeof navigator !== 'undefined') {
+      navigator.clipboard.writeText(currentOrigin);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    }
+  };
 
   const kakaoApiKey = process.env.NEXT_PUBLIC_KAKAO_MAP_KEY?.trim() || '';
 
@@ -337,10 +356,19 @@ export default function MapView({
                   카카오 [지도/로컬] 서비스 활성화 안내
                 </h3>
                 <p className="text-xs text-gray-600 max-w-md mt-1 leading-relaxed">
-                  카카오 API 키(<code>f0b96440...</code>)가 설정되었으나, 카카오 개발자 콘솔에서 <strong>지도/로컬 서비스 활성화</strong> 설정이 필요합니다.
+                  {kakaoApiKey ? (
+                    <>
+                      카카오 API 키(<code>{kakaoApiKey.slice(0, 8)}...</code>)가 설정되었으나, 카카오 개발자 콘솔에서 <strong>지도/로컬 활성화</strong> 및 <strong>도메인 등록</strong>이 필요합니다.
+                    </>
+                  ) : (
+                    <>
+                      카카오 API 키가 설정되지 않았습니다. Vercel 환경 변수에 <code>NEXT_PUBLIC_KAKAO_MAP_KEY</code>를 등록해 주세요.
+                    </>
+                  )}
                 </p>
 
-                <div className="mt-4 w-full max-w-md bg-white rounded-xl p-4 border border-gray-200 text-left shadow-xs space-y-2.5 text-xs">
+                <div className="mt-4 w-full max-w-md bg-white rounded-xl p-4 border border-gray-200 text-left shadow-xs space-y-3 text-xs">
+                  {/* 1. 지도/로컬 활성화 */}
                   <div className="flex items-start gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                     <div>
@@ -351,20 +379,57 @@ export default function MapView({
                     </div>
                   </div>
 
+                  {/* 2. Web 사이트 도메인 등록 */}
                   <div className="flex items-start gap-2 pt-2 border-t border-gray-100">
                     <Globe className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                    <div>
-                      <span className="font-bold text-gray-900">2. Web 플랫폼 사이트 도메인 등록</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-gray-900">2. Web 플랫폼 사이트 도메인 등록</span>
+                        {currentOrigin && (
+                          <button
+                            onClick={handleCopyOrigin}
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded cursor-pointer transition-colors"
+                          >
+                            {isCopied ? (
+                              <>
+                                <Check className="w-3 h-3 text-emerald-600" />
+                                <span className="text-emerald-600">복사 완료!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3 h-3" />
+                                <span>현재 주소 복사</span>
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
                       <p className="text-gray-500 mt-0.5">
-                        [앱 설정] &gt; [플랫폼] &gt; Web 사이트 도메인에 등록:
+                        카카오 개발자 콘솔 &gt; <strong>[앱 설정] &gt; [플랫폼] &gt; Web</strong>에 아래 사이트 도메인들을 모두 등록해 주세요:
                       </p>
-                      <div className="mt-1 flex gap-1 font-mono text-[11px]">
+                      <div className="mt-1.5 flex flex-wrap gap-1 font-mono text-[11px]">
+                        {currentOrigin && (
+                          <span className="bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded border border-indigo-200">
+                            {currentOrigin}
+                          </span>
+                        )}
                         <span className="bg-gray-100 px-1.5 py-0.5 rounded">http://localhost:3000</span>
-                        <span className="bg-indigo-50 text-indigo-700 font-bold px-1.5 py-0.5 rounded">
-                          http://localhost:3001
-                        </span>
+                        <span className="bg-gray-100 px-1.5 py-0.5 rounded">http://localhost:3001</span>
                       </div>
                     </div>
+                  </div>
+
+                  {/* 콘솔 바로가기 링크 */}
+                  <div className="pt-2 border-t border-gray-100">
+                    <a
+                      href="https://developers.kakao.com/console/app"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold rounded-lg border border-amber-200 transition-colors"
+                    >
+                      <span>카카오 개발자 콘솔 바로가기</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
                   </div>
                 </div>
 
