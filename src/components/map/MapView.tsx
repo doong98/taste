@@ -368,13 +368,13 @@ export default function MapView({
                 </p>
 
                 <div className="mt-4 w-full max-w-md bg-white rounded-xl p-4 border border-gray-200 text-left shadow-xs space-y-3 text-xs">
-                  {/* 1. 지도/로컬 활성화 */}
+                  {/* 1. 카카오맵 활성화 */}
                   <div className="flex items-start gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                     <div>
-                      <span className="font-bold text-gray-900">1. 지도/로컬 활성화 (필수)</span>
+                      <span className="font-bold text-gray-900">1. 카카오맵 활성화 (필수)</span>
                       <p className="text-gray-500 mt-0.5">
-                        카카오 개발자 콘솔 &gt; <strong>[제품 설정] &gt; [지도/로컬]</strong> 메뉴로 이동하여 <strong>[활성화 설정]을 ON</strong>으로 켜주세요.
+                        좌측 메뉴 &gt; <strong>[제품 설정] &gt; [카카오맵]</strong>으로 이동하여 우측 화면의 <strong>[활성화 설정]을 ON</strong>으로 켜주세요.
                       </p>
                     </div>
                   </div>
@@ -405,7 +405,7 @@ export default function MapView({
                         )}
                       </div>
                       <p className="text-gray-500 mt-0.5">
-                        카카오 개발자 콘솔 &gt; <strong>[앱 설정] &gt; [플랫폼] &gt; Web</strong>에 아래 사이트 도메인들을 모두 등록해 주세요:
+                        좌측 상단 &gt; <strong>[앱 설정] &gt; [앱 ∨] 클릭 &gt; [플랫폼] &gt; Web</strong>에 아래 사이트 도메인들을 모두 등록해 주세요:
                       </p>
                       <div className="mt-1.5 flex flex-wrap gap-1 font-mono text-[11px]">
                         {currentOrigin && (
