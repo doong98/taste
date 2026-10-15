@@ -69,7 +69,8 @@ export default function MapView({
     }
   };
 
-  const kakaoApiKey = process.env.NEXT_PUBLIC_KAKAO_MAP_KEY?.trim() || '';
+  const kakaoApiKey =
+    process.env.NEXT_PUBLIC_KAKAO_MAP_KEY?.trim() || 'f0b96440318fcb915daa3423308056a6';
 
   // 1. 카카오 지도 SDK 비동기 로드
   useEffect(() => {

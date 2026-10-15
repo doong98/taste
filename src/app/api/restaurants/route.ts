@@ -6,7 +6,9 @@ import { calculateDistanceInMeters } from '@/utils/geo';
 
 // 공공데이터 서비스키 안전 인코딩/디코딩 처리
 function getServiceKey(): string {
-  const rawKey = process.env.DATA_GO_KR_API_KEY?.trim() || '';
+  const rawKey =
+    process.env.DATA_GO_KR_API_KEY?.trim() ||
+    '4TYXidfGqaNFclYJrtyhxzzsg942aLp55BqSR8qJ2PfbmhNQjTXok6ph0h2zcmdawslE8xWNRxIWN6Biki3F1g%3D%3D';
   if (!rawKey) return '';
   try {
     const decoded = decodeURIComponent(rawKey);
