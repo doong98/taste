@@ -243,7 +243,7 @@ export async function GET(request: Request) {
               .upsert(rowsToSave, { onConflict: 'source,origin_id' });
           } catch {
             const fallbackRows = rowsToSave.map(
-              ({ origin_id, source, business_status, updated_at, ...rest }) => rest
+              ({ origin_id, source, business_status, updated_at, ...rest }: any) => rest
             );
             await supabaseServer
               .from('restaurants')

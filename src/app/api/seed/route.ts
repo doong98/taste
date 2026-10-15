@@ -12,8 +12,8 @@ export async function POST() {
       road_address: r.roadAddress,
       jibun_address: r.jibunAddress,
       phone: r.phone || '',
-      lat: r.coordinates.lat,
-      lng: r.coordinates.lng,
+      lat: r.coordinates?.lat ?? null,
+      lng: r.coordinates?.lng ?? null,
       tags: r.tags || [],
     }));
 
