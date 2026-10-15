@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: process.env.NEXT_EXPORT === 'true' ? 'export' : undefined,
   /* config options here */
   env: {
     NEXT_PUBLIC_KAKAO_MAP_KEY:
@@ -13,8 +14,8 @@ const nextConfig: NextConfig = {
       process.env.DATA_GO_KR_API_KEY ||
       '4TYXidfGqaNFclYJrtyhxzzsg942aLp55BqSR8qJ2PfbmhNQjTXok6ph0h2zcmdawslE8xWNRxIWN6Biki3F1g%3D%3D',
   },
-  cacheComponents: true,
-  partialPrefetching: true,
+  cacheComponents: process.env.NEXT_EXPORT === 'true' ? false : true,
+  partialPrefetching: process.env.NEXT_EXPORT === 'true' ? false : true,
   turbopack: {
     rules: {
       "*.css": {

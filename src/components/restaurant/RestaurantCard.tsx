@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Restaurant } from '@/types/restaurant';
 import { formatDistance } from '@/utils/geo';
-import { MapPin, Phone } from 'lucide-react';
+import { MapPin, Phone, Heart } from 'lucide-react';
+import { isFavorite as checkIsFavorite, toggleFavorite } from '@/utils/favorites';
 
 interface RestaurantCardProps {
   restaurant: Restaurant;
@@ -10,6 +11,26 @@ interface RestaurantCardProps {
 }
 
 export default function RestaurantCard({ restaurant, onClick, onViewOnMap }: RestaurantCardProps) {
+  const [favorite, setFavorite] = useState(false);
+
+  useEffect(() => {
+    checkIsFavorite(restaurant.id).then(setFavorite);
+
+    const handleSync = (e: any) => {
+      if (e?.detail?.restaurantId === restaurant.id) {
+        setFavorite(e.detail.isFavorite);
+      }
+    };
+    window.addEventListener('taste_favorites_changed', handleSync);
+    return () => window.removeEventListener('taste_favorites_changed', handleSync);
+  }, [restaurant.id]);
+
+  const handleHeartClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const next = await toggleFavorite(restaurant.id);
+    setFavorite(next);
+  };
+
   return (
     <div
       onClick={onClick}
@@ -21,10 +42,10 @@ export default function RestaurantCard({ restaurant, onClick, onViewOnMap }: Res
           onClick();
         }
       }}
-      className="bg-white rounded-2xl border border-gray-150 p-4 hover:border-indigo-300 hover:shadow-md transition-all text-left cursor-pointer group flex flex-col justify-between"
+      className="bg-white rounded-2xl border border-gray-150 p-4 hover:border-indigo-300 hover:shadow-md transition-all text-left cursor-pointer group flex flex-col justify-between relative"
     >
       <div>
-        {/* 상단: 업종 & 거리 & 지도보기 버튼 */}
+        {/* 상단: 업종 & 거리 & 즐겨찾기/지도보기 버튼 */}
         <div className="flex items-center justify-between gap-2 mb-2">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md">
@@ -61,6 +82,17 @@ export default function RestaurantCard({ restaurant, onClick, onViewOnMap }: Res
                 <MapPin className="w-4 h-4 text-indigo-500" />
               </button>
             )}
+            <button
+              type="button"
+              onClick={handleHeartClick}
+              className={`p-1 rounded-md transition-colors ${
+                favorite ? 'text-rose-500 bg-rose-50' : 'text-gray-300 hover:text-rose-500 hover:bg-gray-100'
+              }`}
+              title={favorite ? '즐겨찾기 해제' : '즐겨찾기 추가'}
+              aria-label="즐겨찾기"
+            >
+              <Heart className={`w-4 h-4 ${favorite ? 'fill-rose-500 text-rose-500' : ''}`} />
+            </button>
           </div>
         </div>
 

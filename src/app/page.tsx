@@ -22,7 +22,11 @@ import {
 import { REAL_RESTAURANTS } from '@/constants/realStoreData';
 import { DEFAULT_REGION } from '@/constants/regions';
 import { calculateDistanceInMeters } from '@/utils/geo';
-import { List, Map as MapIcon, Loader2, Navigation, AlertCircle } from 'lucide-react';
+import { buildApiUrl } from '@/utils/api';
+import { getCurrentLocation } from '@/utils/location';
+import { getFavoriteIds } from '@/utils/favorites';
+import { App } from '@capacitor/app';
+import { List, Map as MapIcon, Loader2, Navigation, AlertCircle, Heart, RotateCcw } from 'lucide-react';
 
 export default function Home() {
   // 1. 위치 및 지역 상태
@@ -37,18 +41,41 @@ export default function Home() {
 
   // 2. 실제 음식점 데이터 및 상태
   const [rawRestaurants, setRawRestaurants] = useState<Restaurant[]>([]);
-  const filteredRestaurants = rawRestaurants; // 하위 호환 및 stale 캐시 방어용 안전 별칭
   const [totalCount, setTotalCount] = useState<number>(0);
   const [dataSource, setDataSource] = useState<string>('public_data');
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [apiError, setApiError] = useState<string | null>(null);
 
-  // 3. 검색 및 필터 상태
+  // 3. 즐겨찾기 상태
+  const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+
+  useEffect(() => {
+    getFavoriteIds().then(setFavoriteIds);
+
+    const handleFavChange = (e: any) => {
+      if (e?.detail?.favorites) {
+        setFavoriteIds(e.detail.favorites);
+      } else {
+        getFavoriteIds().then(setFavoriteIds);
+      }
+    };
+    window.addEventListener('taste_favorites_changed', handleFavChange);
+    return () => window.removeEventListener('taste_favorites_changed', handleFavChange);
+  }, []);
+
+  // 4. 검색 및 필터 상태
   const [searchKeyword, setSearchKeyword] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('ALL');
   const [distanceFilter, setDistanceFilter] = useState<DistanceFilterType>('ALL');
 
-  // 4. 뷰 모드 및 모달 상태
+  // 즐겨찾기 필터 적용된 최종 음식점 목록
+  const filteredRestaurants = useMemo(() => {
+    if (!showFavoritesOnly) return rawRestaurants;
+    return rawRestaurants.filter((r) => favoriteIds.includes(r.id));
+  }, [rawRestaurants, showFavoritesOnly, favoriteIds]);
+
+  // 5. 뷰 모드 및 모달 상태
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
 
@@ -62,7 +89,34 @@ export default function Home() {
 
   const [isSyncing, setIsSyncing] = useState(false);
 
-  // DB 및 공간 검색 API 호출 (/api/restaurants - 서버/DB에서 거리계산, 반경필터, 업종, 정렬 수행)
+  // Android 하드웨어 뒤로가기 버튼 처리
+  useEffect(() => {
+    let backListener: any = null;
+    try {
+      backListener = App.addListener('backButton', () => {
+        if (selectedRestaurant) {
+          setSelectedRestaurant(null);
+        } else if (isLocationModalOpen) {
+          setIsLocationModalOpen(false);
+        } else if (showFavoritesOnly) {
+          setShowFavoritesOnly(false);
+        } else if (searchKeyword) {
+          setSearchKeyword('');
+        } else {
+          // 최상단 화면일 때 앱 종료
+          App.exitApp();
+        }
+      });
+    } catch {}
+
+    return () => {
+      if (backListener) {
+        backListener.then((l: any) => l.remove()).catch(() => {});
+      }
+    };
+  }, [selectedRestaurant, isLocationModalOpen, showFavoritesOnly, searchKeyword]);
+
+  // DB 및 공간 검색 API 호출 (웹과 모바일 환경 자동 주소 매핑)
   const fetchRestaurants = useCallback(
     async (isSync = false) => {
       if (isSync) {
@@ -77,9 +131,11 @@ export default function Home() {
         const categoryQuery = selectedCategory !== 'ALL' ? `&category=${encodeURIComponent(selectedCategory)}` : '';
         const keywordQuery = searchKeyword.trim() ? `&keyword=${encodeURIComponent(searchKeyword.trim())}` : '';
 
-        const res = await fetch(
+        const endpoint = buildApiUrl(
           `/api/restaurants?lat=${currentCenter.lat}&lng=${currentCenter.lng}&limit=50${radiusQuery}${categoryQuery}${keywordQuery}${syncQuery}`
         );
+
+        const res = await fetch(endpoint);
         const json = await res.json();
 
         if (res.ok && json.success) {
@@ -113,55 +169,24 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [fetchRestaurants]);
 
-  // 버튼을 누를 때만 브라우저 위치 권한 요청 (거부/시간초과/미지원 분기 처리)
-  const handleRequestGps = useCallback(() => {
-    if (typeof window === 'undefined') return;
-
-    if (!navigator.geolocation) {
-      const reason = '사용하시는 브라우저에서 위치 정보(Geolocation)를 지원하지 않습니다.';
-      setLocationErrorReason(reason);
-      setIsPermissionDenied(true);
-      setIsLocationModalOpen(true);
-      return;
-    }
-
+  // 웹 브라우저 & Capacitor 모바일 하이브리드 GPS 위치 권한 요청
+  const handleRequestGps = useCallback(async () => {
     setIsGpsLoading(true);
     setLocationErrorReason('');
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        setUserCoordinates({ lat: latitude, lng: longitude });
-        setIsUsingGps(true);
-        setIsPermissionDenied(false);
-        setIsGpsLoading(false);
-      },
-      (error) => {
-        setIsGpsLoading(false);
-        setIsUsingGps(false);
-        setIsPermissionDenied(true);
+    const result = await getCurrentLocation();
+    setIsGpsLoading(false);
 
-        let reason = '위치 정보를 가져올 수 없습니다.';
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
-            reason = '브라우저 위치 접근 권한이 거부되었습니다. (주소창 자물쇠 아이콘에서 허용 가능)';
-            break;
-          case error.POSITION_UNAVAILABLE:
-            reason = '네트워크 또는 GPS 신호를 수신할 수 없어 위치를 파악하지 못했습니다.';
-            break;
-          case error.TIMEOUT:
-            reason = '위치 요청 시간이 초과되었습니다 (10초). 다시 시도해 주세요.';
-            break;
-          default:
-            reason = `위치 오류 발생: ${error.message}`;
-            break;
-        }
-
-        setLocationErrorReason(reason);
-        setIsLocationModalOpen(true);
-      },
-      { timeout: 10000, enableHighAccuracy: true, maximumAge: 0 }
-    );
+    if (result.success && result.coords) {
+      setUserCoordinates(result.coords);
+      setIsUsingGps(true);
+      setIsPermissionDenied(false);
+    } else {
+      setIsUsingGps(false);
+      setIsPermissionDenied(Boolean(result.isPermissionDenied));
+      setLocationErrorReason(result.errorReason || '현재 위치를 가져올 수 없습니다.');
+      setIsLocationModalOpen(true);
+    }
   }, []);
 
   // 필터 초기화
@@ -185,7 +210,7 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col font-sans pb-24 sm:pb-12 text-gray-900">
+    <div className="min-h-screen bg-gray-50 flex flex-col font-sans pb-28 sm:pb-12 text-gray-900 pt-safe pb-safe">
       {/* 상단 헤더 */}
       <Header
         currentRegion={currentRegion}
@@ -207,7 +232,7 @@ export default function Home() {
             </div>
             <button
               onClick={() => fetchRestaurants()}
-              className="text-xs font-bold text-rose-700 bg-white border border-rose-200 px-2.5 py-1 rounded-md hover:bg-rose-100 transition-colors shrink-0 ml-2"
+              className="text-xs font-bold text-rose-700 bg-white border border-rose-200 px-2.5 py-1 rounded-md hover:bg-rose-100 transition-colors shrink-0 ml-2 cursor-pointer"
             >
               다시 시도
             </button>
@@ -217,7 +242,7 @@ export default function Home() {
         {/* 실데이터 & 연동 상태 안내 배너 */}
         <DataStatusBanner
           dataSource={dataSource}
-          count={rawRestaurants.length}
+          count={filteredRestaurants.length}
           totalCount={totalCount}
           regionName={currentRegion.name}
           onSync={() => fetchRestaurants(true)}
@@ -241,7 +266,7 @@ export default function Home() {
                 setIsUsingGps(false);
                 setUserCoordinates(null);
               }}
-              className="text-[11px] font-bold text-blue-700 hover:text-blue-900 underline shrink-0 ml-2"
+              className="text-[11px] font-bold text-blue-700 hover:text-blue-900 underline shrink-0 ml-2 cursor-pointer"
             >
               지역 기준으로 복귀
             </button>
@@ -264,19 +289,33 @@ export default function Home() {
             onSelectCategory={setSelectedCategory}
           />
 
-          {/* 구분선 & 거리/뷰 컨트롤 */}
+          {/* 구분선 & 거리/즐겨찾기/뷰 컨트롤 */}
           <div className="border-t border-gray-100 pt-2 flex flex-wrap items-center justify-between gap-2">
-            {/* 반경 필터 (전체, 500m, 1km, 3km) */}
-            <DistanceFilter
-              selectedDistance={distanceFilter}
-              onSelectDistance={setDistanceFilter}
-            />
+            {/* 반경 필터 및 즐겨찾기 토글 버튼 */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <DistanceFilter
+                selectedDistance={distanceFilter}
+                onSelectDistance={setDistanceFilter}
+              />
+              <button
+                onClick={() => setShowFavoritesOnly((prev) => !prev)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                  showFavoritesOnly
+                    ? 'bg-rose-50 text-rose-600 border-rose-300 shadow-2xs'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                }`}
+                title="즐겨찾기한 음식점만 모아보기"
+              >
+                <Heart className={`w-3.5 h-3.5 ${showFavoritesOnly ? 'fill-rose-500 text-rose-500' : 'text-gray-400'}`} />
+                <span>즐겨찾기 ({favoriteIds.length})</span>
+              </button>
+            </div>
 
             {/* 목록 / 지도 전환 버튼 (데스크톱) */}
             <div className="hidden sm:flex items-center bg-gray-100 p-1 rounded-xl">
               <button
                 onClick={() => setViewMode('list')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   viewMode === 'list'
                     ? 'bg-white text-indigo-700 shadow-2xs'
                     : 'text-gray-600 hover:text-gray-900'
@@ -287,7 +326,7 @@ export default function Home() {
               </button>
               <button
                 onClick={() => setViewMode('map')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   viewMode === 'map'
                     ? 'bg-white text-indigo-700 shadow-2xs'
                     : 'text-gray-600 hover:text-gray-900'
@@ -306,20 +345,56 @@ export default function Home() {
             <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mb-2" />
             <p className="text-sm font-medium">우리 동네 음식점 정보를 불러오는 중입니다...</p>
           </div>
+        ) : !isLoadingData && apiError && rawRestaurants.length === 0 ? (
+          /* 통신/네트워크 에러 시 전면 재시도 화면 */
+          <div className="py-16 px-4 flex flex-col items-center justify-center text-center bg-white rounded-2xl border border-gray-200 shadow-xs">
+            <div className="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 mb-3">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-gray-900 mb-1">데이터를 불러오지 못했습니다</h3>
+            <p className="text-xs text-gray-500 max-w-sm mb-4 leading-relaxed">
+              {apiError}
+              <br />네트워크 연결을 확인한 후 다시 시도해 주세요.
+            </p>
+            <button
+              onClick={() => fetchRestaurants()}
+              className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>다시 시도하기</span>
+            </button>
+          </div>
+        ) : showFavoritesOnly && filteredRestaurants.length === 0 ? (
+          /* 즐겨찾기 결과 없을 때 안내 */
+          <div className="py-16 px-4 flex flex-col items-center justify-center text-center bg-white rounded-2xl border border-gray-200 shadow-xs">
+            <div className="w-12 h-12 rounded-full bg-rose-50 flex items-center justify-center text-rose-500 mb-3">
+              <Heart className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-gray-900 mb-1">등록된 즐겨찾기가 없습니다</h3>
+            <p className="text-xs text-gray-500 max-w-sm mb-4 leading-relaxed">
+              음식점 카드의 하트(♥) 버튼을 눌러 자주 찾는 맛집을 즐겨찾기에 등록해 보세요!
+            </p>
+            <button
+              onClick={() => setShowFavoritesOnly(false)}
+              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition-all cursor-pointer"
+            >
+              전체 음식점 목록 보기
+            </button>
+          </div>
         ) : viewMode === 'list' ? (
           <RestaurantList
-            restaurants={rawRestaurants}
+            restaurants={filteredRestaurants}
             onSelectRestaurant={(r) => setSelectedRestaurant(r)}
             onViewOnMap={(r) => {
               setSelectedRestaurant(r);
               setViewMode('map');
             }}
             onResetFilters={handleResetFilters}
-            totalCount={rawRestaurants.length}
+            totalCount={filteredRestaurants.length}
           />
         ) : (
           <MapView
-            restaurants={rawRestaurants}
+            restaurants={filteredRestaurants}
             center={currentCenter}
             currentRegion={currentRegion}
             distanceFilter={distanceFilter}
@@ -333,20 +408,20 @@ export default function Home() {
       </main>
 
       {/* 모바일 플로팅 하단 뷰 모드 전환 버튼 */}
-      <div className="sm:hidden fixed bottom-6 left-0 right-0 z-40 flex justify-center pointer-events-none">
+      <div className="sm:hidden fixed bottom-6 left-0 right-0 z-40 flex justify-center pointer-events-none pb-[env(safe-area-inset-bottom)]">
         <button
           onClick={() => setViewMode((prev) => (prev === 'list' ? 'map' : 'list'))}
-          className="pointer-events-auto bg-gray-900/95 hover:bg-black text-white px-5 py-3 rounded-full font-bold text-sm shadow-xl flex items-center gap-2 border border-gray-700 backdrop-blur-md active:scale-95 transition-all"
+          className="pointer-events-auto bg-gray-900/95 hover:bg-black text-white px-5 py-3 rounded-full font-bold text-sm shadow-xl flex items-center gap-2 border border-gray-700 backdrop-blur-md active:scale-95 transition-all cursor-pointer"
         >
           {viewMode === 'list' ? (
             <>
               <MapIcon className="w-4 h-4 text-indigo-400" />
-              <span>지도 보기 ({rawRestaurants.length})</span>
+              <span>지도 보기 ({filteredRestaurants.length})</span>
             </>
           ) : (
             <>
               <List className="w-4 h-4 text-indigo-400" />
-              <span>목록 보기 ({rawRestaurants.length})</span>
+              <span>목록 보기 ({filteredRestaurants.length})</span>
             </>
           )}
         </button>

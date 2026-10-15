@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Restaurant } from '@/types/restaurant';
 import { formatDistance } from '@/utils/geo';
-import { X, MapPin, Phone, Check, Copy, Compass, ExternalLink } from 'lucide-react';
+import { X, MapPin, Phone, Check, Copy, Compass, ExternalLink, Heart, Navigation } from 'lucide-react';
+import { isFavorite, toggleFavorite } from '@/utils/favorites';
+import { openRouteInMap } from '@/utils/navigation';
 
 interface RestaurantDetailModalProps {
   restaurant: Restaurant | null;
@@ -15,8 +17,20 @@ export default function RestaurantDetailModal({
   onViewOnMap,
 }: RestaurantDetailModalProps) {
   const [copied, setCopied] = useState(false);
+  const [favorite, setFavorite] = useState(false);
+
+  useEffect(() => {
+    if (restaurant) {
+      isFavorite(restaurant.id).then(setFavorite);
+    }
+  }, [restaurant]);
 
   if (!restaurant) return null;
+
+  const handleToggleFavorite = async () => {
+    const nextState = await toggleFavorite(restaurant.id);
+    setFavorite(nextState);
+  };
 
   const handleCopyAddress = () => {
     navigator.clipboard.writeText(restaurant.roadAddress);
@@ -39,13 +53,27 @@ export default function RestaurantDetailModal({
               </span>
             )}
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-200/50 transition-colors"
-            aria-label="닫기"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleToggleFavorite}
+              className={`p-1.5 rounded-lg transition-colors ${
+                favorite
+                  ? 'text-rose-500 bg-rose-50'
+                  : 'text-gray-400 hover:text-rose-500 hover:bg-gray-100'
+              }`}
+              title={favorite ? '즐겨찾기 해제' : '즐겨찾기 추가'}
+              aria-label="즐겨찾기"
+            >
+              <Heart className={`w-5 h-5 ${favorite ? 'fill-rose-500 text-rose-500' : ''}`} />
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-200/50 transition-colors"
+              aria-label="닫기"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* 모달 내용 스크롤 */}
@@ -125,24 +153,48 @@ export default function RestaurantDetailModal({
             )}
           </div>
 
-          {/* 지도 바로가기 카드 또는 좌표 미제공 안내 */}
+          {/* 외부 지도 앱 길찾기 및 위치 확인 */}
           {restaurant.coordinates && restaurant.hasCoordinates !== false ? (
-            <div className="p-3.5 rounded-xl border border-gray-200 bg-white flex items-center justify-between">
-              <div className="text-xs">
-                <span className="font-bold text-gray-800 block">카카오 지도에서 위치 확인</span>
+            <div className="p-4 rounded-xl border border-gray-200 bg-white space-y-2.5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-xs text-gray-800 flex items-center gap-1">
+                  <Navigation className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>지도 앱 길찾기 연결</span>
+                </span>
                 <span className="text-gray-400 text-[11px]">
-                  위도: {restaurant.coordinates.lat.toFixed(5)}, 경도: {restaurant.coordinates.lng.toFixed(5)}
+                  위도 {restaurant.coordinates.lat.toFixed(4)}, 경도 {restaurant.coordinates.lng.toFixed(4)}
                 </span>
               </div>
-              <a
-                href={`https://map.kakao.com/link/map/${encodeURIComponent(restaurant.name)},${restaurant.coordinates.lat},${restaurant.coordinates.lng}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2.5 py-1.5 rounded-lg transition-colors"
-              >
-                <span>카카오맵 열기</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  onClick={() =>
+                    openRouteInMap(
+                      'kakao',
+                      restaurant.name,
+                      restaurant.coordinates!.lat,
+                      restaurant.coordinates!.lng
+                    )
+                  }
+                  className="flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-bold text-amber-950 bg-amber-300/80 hover:bg-amber-300 rounded-lg transition-colors shadow-2xs"
+                >
+                  <span>카카오맵 길찾기</span>
+                  <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+                </button>
+                <button
+                  onClick={() =>
+                    openRouteInMap(
+                      'naver',
+                      restaurant.name,
+                      restaurant.coordinates!.lat,
+                      restaurant.coordinates!.lng
+                    )
+                  }
+                  className="flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-bold text-emerald-950 bg-emerald-100 hover:bg-emerald-200 rounded-lg transition-colors border border-emerald-300/60 shadow-2xs"
+                >
+                  <span>네이버 길찾기</span>
+                  <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+                </button>
+              </div>
             </div>
           ) : (
             <div className="p-3.5 rounded-xl border border-gray-200 bg-gray-50 flex items-center gap-2 text-xs text-gray-500">
